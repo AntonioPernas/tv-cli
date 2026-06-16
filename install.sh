@@ -1,14 +1,14 @@
 #!/bin/bash
 
-echo "🚀 Instalando tv-cli..."
+echo "🚀 Installing tv-cli..."
 
-# Asegurar que el directorio local de binarios existe
+# Ensure local bin directory exists
 mkdir -p "$HOME/.local/bin"
 
-# Copiar el script y dar permisos
+# Copy script and set permissions
 cp tv-cli "$HOME/.local/bin/tv-cli"
 chmod +x "$HOME/.local/bin/tv-cli"
 
-echo "✅ Instalación completada."
-echo "Asegúrate de que $HOME/.local/bin está en tu PATH."
-echo "Ejecuta 'tv-cli' para comenzar."
+echo "✅ Installation completed successfully."
+echo "Please make sure $HOME/.local/bin is in your PATH."
+echo "Run 'tv-cli' to get started."
