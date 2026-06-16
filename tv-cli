@@ -3,91 +3,90 @@
 CONFIG_DIR="$HOME/.config/tv-cli"
 CONFIG_FILE="$CONFIG_DIR/config"
 
-# Crear configuración en la primera ejecución
+# Create configuration folder and file on first run
 if [ ! -f "$CONFIG_FILE" ]; then
     clear
-    echo "🎬 Bienvenido a tv-cli"
-    echo "Parece que es tu primera vez. Vamos a configurarlo."
+    echo "🎬 Welcome to tv-cli"
+    echo "It looks like this is your first time running tv-cli. Let's configure it."
     mkdir -p "$CONFIG_DIR"
-    read -p "Introduce tu API Key de Jackett: " user_api
+    read -p "Enter your Jackett API Key: " user_api
     echo "API_KEY=\"$user_api\"" > "$CONFIG_FILE"
     echo "JACKETT_URL=\"http://localhost:9117\"" >> "$CONFIG_FILE"
-    echo -e "\n¡Configuración guardada en $CONFIG_FILE!"
+    echo -e "\nConfiguration saved to $CONFIG_FILE!"
     sleep 2
 fi
 
-# Cargar la configuración
+# Load configuration
 source "$CONFIG_FILE"
 
-
 if [ -z "$1" ]; then
-    echo "Error: Debes introducir un término de búsqueda."
-    echo "Uso: tv-cli \"nombre de la serie\""
+    echo "Error: Missing search term."
+    echo "Usage: tv-cli \"series name\""
     exit 1
 fi
 
-# El trap ahora apaga tanto Jackett como el motor anti-Cloudflare al cerrar
-trap 'echo -e "\nApagando motores de búsqueda y anti-Cloudflare..."; systemctl --user stop jackett flaresolverr' EXIT
+# Ensure services shut down on exit (even on Ctrl+C)
+trap 'echo -e "\nShutting down search and anti-Cloudflare engines..."; systemctl --user stop jackett flaresolverr' EXIT
 
-echo "Iniciando sistema de rastreo P2P (Jackett + FlareSolverr)..."
+echo "Starting P2P tracking system (Jackett + FlareSolverr)..."
 systemctl --user start flaresolverr jackett
 
-# Bucle de espera inteligente
-echo "Esperando a que las APIs locales respondan..."
+# Smart wait loop for local API initialization
+echo "Waiting for local APIs to respond..."
 while ! curl -s "${JACKETT_URL}/api/v2.0/server/config" > /dev/null; do
     sleep 1
 done
-# FlareSolverr tarda un par de segundos más en levantar el navegador interno
 sleep 3 
 
-echo "Sistema en línea. Perforando protecciones y buscando torrents..."
+echo "System online. Bypassing protections and searching torrents..."
 
-# Formatear la búsqueda para la URL
+# Format query for URL
 query=$(echo "$1" | sed 's/ /%20/g')
 
-# Consultar la API unificada
+# Query unified Jackett API
 json=$(curl -s "${JACKETT_URL}/api/v2.0/indexers/all/results?apikey=${API_KEY}&Query=${query}")
 
 if [ -z "$json" ] || [ "$(echo "$json" | jq '.Results | length')" -eq 0 ]; then
-    echo "No se encontraron resultados. Intenta una búsqueda más amplia (ej. solo el nombre de la serie)."
+    echo "No results found. Try a broader search term."
     exit 1
 fi
 
-# fzf con toda la lista
-# fzf con toda la lista ordenada por Seeders (de mayor a menor)
-seleccion=$(echo "$json" | jq -r '.Results | sort_by(.Seeders // 0) | reverse | .[] | "[\(.Size / 1048576 | floor) MB] S:\(.Seeders // 0) - \(.Title) @@ \(.MagnetUri // .Link)"' | fzf --prompt="🎬 Selecciona tu descarga: ")
+# fzf menu sorted by Seeders (descending)
+seleccion=$(echo "$json" | jq -r '.Results | sort_by(.Seeders // 0) | reverse | .[] | "[\(.Size / 1048576 | floor) MB] S:\(.Seeders // 0) - \(.Title) @@ \(.MagnetUri // .Link)"' | fzf --prompt="🎬 Select your stream: ")
+
 if [ -n "$seleccion" ]; then
     enlace=$(echo "$seleccion" | awk -F' @@ ' '{print $2}')
     clear
     
-    # Si es un magnet link, webtorrent lo traga directo
+    # 1. Direct Magnet Link
     if [[ "$enlace" == magnet:* ]]; then
-        echo "Conectando al Magnet Link P2P..."
+        echo "Connecting to P2P Magnet Link..."
         webtorrent "$enlace" --mpv
     
-    # Si es una URL http (un archivo .torrent de Jackett), lo descargamos primero a la memoria RAM (/tmp)
-
-
+    # 2. HTTP Link (Jackett Proxy)
     elif [[ "$enlace" == http* ]]; then
-        echo "Descargando archivo .torrent desde Jackett..."
-        # Descargamos el torrent a una carpeta temporal con un nombre único
-        archivo_tmp="/tmp/tv-cli-$(date +%s).torrent"
+        echo "Resolving link via Jackett proxy..."
         
-        # Le decimos a curl que siga redirecciones y lo guarde
-        curl -sL "$enlace" -o "$archivo_tmp"
+        magnet_oculto=$(curl -sD - -o /dev/null "$enlace" | grep -i '^Location: *magnet:' | sed 's/^[Ll]ocation: *//I' | tr -d '\r\n')
         
-        # Comprobamos que se descargó bien
-        if [ -s "$archivo_tmp" ]; then
-            echo "Conectando al enjambre Torrent..."
-            webtorrent "$archivo_tmp" --mpv
-            # Limpiamos el archivo temporal al terminar
-            rm "$archivo_tmp"
+        if [ -n "$magnet_oculto" ]; then
+            echo "Magnet Link detected in redirection. Connecting..."
+            webtorrent "$magnet_oculto" --mpv
         else
-            echo "Error: Jackett no pudo descargar el archivo .torrent válido."
-            exit 1
+            echo "Downloading physical .torrent file..."
+            archivo_tmp="/tmp/tv-cli-$(date +%s).torrent"
+            curl -sL "$enlace" -o "$archivo_tmp"
+            
+            if [ -s "$archivo_tmp" ]; then
+                webtorrent "$archivo_tmp" --mpv
+                rm -f "$archivo_tmp"
+            else
+                echo "Error: Jackett returned an empty file."
+                exit 1
+            fi
         fi
     else
-        echo "Error: El formato del enlace no es soportado ($enlace)"
+        echo "Unsupported link format."
         exit 1
     fi
 fi
