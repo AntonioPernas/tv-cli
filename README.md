@@ -4,6 +4,7 @@ Un buscador y reproductor de torrents P2P ultraligero para la terminal. Diseñad
 
 ## 📦 Dependencias previas
 Antes de instalar, asegúrate de tener configurado en tu sistema:
+* **pnpm** (tested on version 11.7.0)
 * **Jackett y FlareSolverr** (Configurados con tus trackers favoritos)
 * **WebTorrent CLI** (`npm install -g webtorrent-cli`)
 * **fzf** y **jq** (Ej: `sudo dnf install fzf jq`)
