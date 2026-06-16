@@ -1,0 +1,93 @@
+#!/bin/bash
+
+CONFIG_DIR="$HOME/.config/tv-cli"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# Crear configuración en la primera ejecución
+if [ ! -f "$CONFIG_FILE" ]; then
+    clear
+    echo "🎬 Bienvenido a tv-cli"
+    echo "Parece que es tu primera vez. Vamos a configurarlo."
+    mkdir -p "$CONFIG_DIR"
+    read -p "Introduce tu API Key de Jackett: " user_api
+    echo "API_KEY=\"$user_api\"" > "$CONFIG_FILE"
+    echo "JACKETT_URL=\"http://localhost:9117\"" >> "$CONFIG_FILE"
+    echo -e "\n¡Configuración guardada en $CONFIG_FILE!"
+    sleep 2
+fi
+
+# Cargar la configuración
+source "$CONFIG_FILE"
+
+
+if [ -z "$1" ]; then
+    echo "Error: Debes introducir un término de búsqueda."
+    echo "Uso: tv-cli \"nombre de la serie\""
+    exit 1
+fi
+
+# El trap ahora apaga tanto Jackett como el motor anti-Cloudflare al cerrar
+trap 'echo -e "\nApagando motores de búsqueda y anti-Cloudflare..."; systemctl --user stop jackett flaresolverr' EXIT
+
+echo "Iniciando sistema de rastreo P2P (Jackett + FlareSolverr)..."
+systemctl --user start flaresolverr jackett
+
+# Bucle de espera inteligente
+echo "Esperando a que las APIs locales respondan..."
+while ! curl -s "${JACKETT_URL}/api/v2.0/server/config" > /dev/null; do
+    sleep 1
+done
+# FlareSolverr tarda un par de segundos más en levantar el navegador interno
+sleep 3 
+
+echo "Sistema en línea. Perforando protecciones y buscando torrents..."
+
+# Formatear la búsqueda para la URL
+query=$(echo "$1" | sed 's/ /%20/g')
+
+# Consultar la API unificada
+json=$(curl -s "${JACKETT_URL}/api/v2.0/indexers/all/results?apikey=${API_KEY}&Query=${query}")
+
+if [ -z "$json" ] || [ "$(echo "$json" | jq '.Results | length')" -eq 0 ]; then
+    echo "No se encontraron resultados. Intenta una búsqueda más amplia (ej. solo el nombre de la serie)."
+    exit 1
+fi
+
+# fzf con toda la lista
+# fzf con toda la lista ordenada por Seeders (de mayor a menor)
+seleccion=$(echo "$json" | jq -r '.Results | sort_by(.Seeders // 0) | reverse | .[] | "[\(.Size / 1048576 | floor) MB] S:\(.Seeders // 0) - \(.Title) @@ \(.MagnetUri // .Link)"' | fzf --prompt="🎬 Selecciona tu descarga: ")
+if [ -n "$seleccion" ]; then
+    enlace=$(echo "$seleccion" | awk -F' @@ ' '{print $2}')
+    clear
+    
+    # Si es un magnet link, webtorrent lo traga directo
+    if [[ "$enlace" == magnet:* ]]; then
+        echo "Conectando al Magnet Link P2P..."
+        webtorrent "$enlace" --mpv
+    
+    # Si es una URL http (un archivo .torrent de Jackett), lo descargamos primero a la memoria RAM (/tmp)
+
+
+    elif [[ "$enlace" == http* ]]; then
+        echo "Descargando archivo .torrent desde Jackett..."
+        # Descargamos el torrent a una carpeta temporal con un nombre único
+        archivo_tmp="/tmp/tv-cli-$(date +%s).torrent"
+        
+        # Le decimos a curl que siga redirecciones y lo guarde
+        curl -sL "$enlace" -o "$archivo_tmp"
+        
+        # Comprobamos que se descargó bien
+        if [ -s "$archivo_tmp" ]; then
+            echo "Conectando al enjambre Torrent..."
+            webtorrent "$archivo_tmp" --mpv
+            # Limpiamos el archivo temporal al terminar
+            rm "$archivo_tmp"
+        else
+            echo "Error: Jackett no pudo descargar el archivo .torrent válido."
+            exit 1
+        fi
+    else
+        echo "Error: El formato del enlace no es soportado ($enlace)"
+        exit 1
+    fi
+fi
