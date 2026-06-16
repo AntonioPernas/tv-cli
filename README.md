@@ -1,30 +1,27 @@
 # 🎬 tv-cli
 
-Un buscador y reproductor de torrents P2P ultraligero para la terminal. Diseñado para saltarse bloqueos de operadoras usando Jackett y FlareSolverr, y reproducir el contenido al instante en la memoria RAM sin descargar archivos al disco duro.
+An ultralight P2P torrent streaming searcher and player for the terminal. Designed to bypass ISP blocks using Jackett and FlareSolverr, streaming content instantly directly into your RAM without downloading permanent files to your storage.
 
-## 📦 Dependencias previas
-Antes de instalar, asegúrate de tener configurado en tu sistema:
+## 📦 Prerequisites
+Before installing, ensure the following tools are configured on your system:
 * **pnpm** (tested on version 11.7.0)
-* **Jackett y FlareSolverr** (Configurados con tus trackers favoritos)
+* **Jackett & FlareSolverr** (Configured with your favorite indexers/trackers)
 * **WebTorrent CLI** (`npm install -g webtorrent-cli`)
-* **fzf** y **jq** (Ej: `sudo dnf install fzf jq`)
-* **mpv** (Reproductor de vídeo)
+* **fzf** & **jq** (e.g., `sudo dnf install fzf jq`)
+* **mpv** (Media player)
 
---- 
-
-## 🚀 Instalación
-Clona este repositorio y ejecuta el instalador:
+## 🚀 Installation
+Clone this repository and run the automated installer:
 ```bash
-git clone [https://github.com/tu-usuario/tv-cli.git](https://github.com/tu-usuario/tv-cli.git)
+git clone [https://github.com/AntonioPernas/tv-cli.git](https://github.com/AntonioPernas/tv-cli.git)
 cd tv-cli
 ./install.sh
 ```
 --- 
 
 ## Uso
-Simplemente ejecuta el comando seguido de tu búsqueda:
+Simply type the command followed by what you wish to search:
 ```bash
-tv-cli "Shameless"
+tv-cli "Example-TVShow"
 ```
-> En la primera ejecución, te pedirá tu API Key de Jackett.
-
+> On the first run, it will ask for your Jackett API Key.
